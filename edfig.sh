@@ -15,11 +15,15 @@ msg_error() { echo "$1" >&2 && exit "$2"; }
 
 usage() {
     cat <<EOF >&2
-Usage: $CMD [subcommand|config name]
+Usage:
+  $CMD [subcommand] [config name]
+  $CMD [config name]
+
+Example:
   $CMD add vim "\$HOME/.vimrc"
   $CMD vim
   $CMD edit vim
-  $CMD edit
+  $CMD rm vim
   $CMD ls
 
 Subcommands:
