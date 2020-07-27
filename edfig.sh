@@ -178,9 +178,9 @@ config_file="${config_path##*/}"
 config_ext=".${config_file##*.}"
 
 if test ."$config_file" == "$config_ext" || test "$config_file" == "$config_ext"; then
-    config_tmp="$(mktemp /tmp/config-"$name"-XX.tmp)"
+    config_tmp="$(mktemp /tmp/config-"$name"-XXXX.tmp)"
 else
-    config_tmp="$(mktemp /tmp/config-"$name"-XX.tmp"${config_ext}")"
+    config_tmp="$(mktemp /tmp/config-"$name"-XXXX.tmp"${config_ext}")"
 fi
 
 cleanup() { rm -f "$config_tmp"; }
