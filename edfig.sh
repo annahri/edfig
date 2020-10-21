@@ -4,7 +4,7 @@
 
 set -o nounset
 
-FILE="$HOME/.config/configs.list"
+config_list="$HOME/.config/configs.list"
 CMD="${0##*/}"
 
 declare -A configs
@@ -43,12 +43,12 @@ config_load() {
         callname="$(get 1 "$line")"
         configdir="$(get 2 "$line")"
         configs[$callname]="$configdir"
-    done < <(grep '^[^\s#]\+' "$FILE")
+    done < <(grep '^[^\s#]\+' "$config_list")
 }
 
 # Add config from command
 config_add() {
-    test "$#" -eq 0 && \
+    test "$#" -eq 0 &&
         msg_error "Usage: $CMD add name path" 8
 
     local name="$1"
@@ -65,10 +65,10 @@ config_add() {
             ;;
     esac
 
-    test -f "$path" || \
+    test -f "$path" ||
         msg_error "Not found: $path" 9
 
-    echo -e "$name = \"$path\"" | tee -a "$FILE" > /dev/null || \
+    echo -e "$name = \"$path\"" | tee -a "$config_list" > /dev/null ||
         msg_error "Cannot add new config." 7
 
     echo "New config has been added."
@@ -77,19 +77,19 @@ config_add() {
 
 config_edit() {
     local name="$1"
-    test -z "$name" && \
-        $EDITOR "$FILE" && exit
+    test -z "$name" &&
+        $EDITOR "$config_list" && exit
 
-    awk '{print $1}' "$FILE" | grep -qw "$name" || \
-        msg_error "Config for $name not found in $FILE" 1
+    awk '{print $1}' "$config_list" | grep -qw "$name" ||
+        msg_error "Config for $name not found in $config_list" 1
 
     tempfile=$(mktemp /tmp/config-XXXX.tmp)
-    linenum=$(grep -n "$name" "$FILE" | cut -d: -f1)
+    linenum=$(grep -n "$name" "$config_list" | cut -d: -f1)
 
     cleanup() { rm -f "$tempfile"; }
     trap cleanup EXIT INT QUIT
 
-    grep "$name" "$FILE" | tee "$tempfile" > /dev/null || \
+    grep "$name" "$config_list" | tee "$tempfile" > /dev/null ||
         msg_error "Error ocurred." 2
 
     raw="$(head -1 "$tempfile")"
@@ -97,16 +97,16 @@ config_edit() {
     $EDITOR "$tempfile" || \
         msg_error "Error on $EDITOR. Aborting" 3
 
-    test "$raw" == "$(head -1 "$tempfile")" && \
+    test "$raw" == "$(head -1 "$tempfile")" &&
         echo "No changes." >&2 && exit
 
     line="$(sed 's/"/\\"/g;s/\//\\\//g' "$tempfile")"
 
-    sed "${linenum}s/.*/$line/" "$FILE" | sponge "$FILE" || \
+    sed "${linenum}s/.*/$line/" "$config_list" | sponge "$config_list" ||
         msg_error "Error editing entry." 4
 
     echo "Successfully edited." >&2
-    cleanup && \
+    cleanup &&
         trap -- EXIT INT QUIT
 
     exit
@@ -114,36 +114,36 @@ config_edit() {
 
 config_rm() {
     local name="${1:-}"
-    test "$name" || \
+    test "$name" ||
         msg_error "What to remove?" 1
 
-    line=$(awk -v name="$name" '$1 == name' "$FILE")
+    line=$(awk -v name="$name" '$1 == name' "$config_list")
 
-    test "$line" || \
-        msg_error "Config for $name not found in $FILE" 1
+    test "$line" ||
+        msg_error "Config for $name not found in $config_list" 1
 
     tempfile=$(mktemp /tmp/configs-XXXX.tmp)
 
     cleanup() { rm -f "$tempfile"; }
     trap cleanup EXIT INT QUIT
 
-    tee "$tempfile" < "$FILE" > /dev/null || \
+    tee "$tempfile" < "$config_list" > /dev/null ||
         msg_error "Unable to make temporary copy." 2
 
 
-    grep -v "$line" "$tempfile" | tee "$FILE" > /dev/null || \
+    grep -v "$line" "$tempfile" | tee "$config_list" > /dev/null ||
         msg_error "Unable to remove $name from list" 4
 
     echo "Successfully removed." >&2
 
-    cleanup && \
+    cleanup &&
         trap -- EXIT INT QUIT
 
     exit
 }
 
 config_ls() {
-    grep '^[^\s#]\+' "$FILE" | \
+    grep '^[^\s#]\+' "$config_list" | \
         sed 's/"//g' | \
         sort | \
         column -s= -t
@@ -152,7 +152,7 @@ config_ls() {
 }
 
 # Begin Script
-test "$#" -eq 0 && \
+test "$#" -eq 0 &&
     usage
 
 case "$1" in
@@ -164,14 +164,14 @@ case "$1" in
     *) name="$1" ;;
 esac
 
-test -s "$FILE" || \
-    msg_error "$FILE doesn't exist or is empty. Create it and add something first.\nExample: configname = /path/to/config" 13
+test -s "$config_list" ||
+    msg_error "$config_list doesn't exist or is empty. Create it and add something first.\nExample: configname = /path/to/config" 13
 
 config_load
 
 config_path="${configs[$name]:-}"
 
-test "$config_path" || \
+test "$config_path" ||
     msg_error "$name doesn't exist." 1
 
 config_file="${config_path##*/}"
@@ -187,18 +187,18 @@ cleanup() { rm -f "$config_tmp"; }
 
 trap cleanup EXIT QUIT INT
 
-test -z "$config_path" && \
-    msg_error "Config $name is not found in $FILE" 1
+test -z "$config_path" &&
+    msg_error "Config $name is not found in $config_list" 1
 
-cp "$config_path" "$config_tmp" 2> /dev/null || \
+cp "$config_path" "$config_tmp" 2> /dev/null ||
     msg_error "Error copying temp file. Aborting" 10
 
 $EDITOR "${config_tmp}"
 
-diff "$config_tmp" "$config_path" &> /dev/null && \
+diff "$config_tmp" "$config_path" &> /dev/null &&
     echo "No changes." >&2 && exit
 
-tee "$config_path" < "$config_tmp" > /dev/null || \
+tee "$config_path" < "$config_tmp" > /dev/null ||
     msg_error "Error ocurred." 11
 
 echo "Saving changes." >&2
