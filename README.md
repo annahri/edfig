@@ -12,16 +12,9 @@ To uninstall, just delete it.
 
 ## Usage
 ```
-Usage: 
+Usage:
   edfig [subcommand] [config name]
   edfig [config name]
-       
-Example:
-  edfig add vim "$HOME/.vimrc"
-  edfig vim
-  edfig edit vim
-  edfig rm vim
-  edfig ls
 
 Subcommands:
   add    Add new config file to list
@@ -29,4 +22,11 @@ Subcommands:
   edit   Edit an entry
   ls     List all stored configs
   help   Print this
+
+Example:
+  edfig add vim "$HOME/.vimrc"
+  edfig vim
+  edfig edit vim
+  edfig rm vim
+  edfig ls
 ```

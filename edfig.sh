@@ -6,16 +6,14 @@ set -o nounset
 
 config_list="$HOME/.config/configs.list"
 CMD="${0##*/}"
+EDITOR="${EDITOR:-vi}"
 
 short_usage() {
     echo -e "${bold}Usage:${reset} $CMD [subcommand|name] [...]"
-    exit
 }
 
 usage() {
-    echo -e "${bold}Usage:${reset}" >&2
-    echo -e "  $CMD [subcommand] [...]" >&2
-    echo -e "  $CMD [config name]" >&2
+    short_usage
     echo -e >&2
     echo -e "${bold}Subcommands:${reset}" >&2
     echo -e "  ${bold}add${reset}    Add new config file to list" >&2
@@ -95,29 +93,35 @@ config_add() {
 
 #
 # Modify specified config name and its path
+# `edfig edit` with no argument will edit entire configs.list
 #
 config_edit() {
     local name="${1:-}"
 
     test -z "$name" &&
-        $EDITOR "$config_list" && exit
+        if ! $EDITOR "$config_list" 2> /dev/null; then
+            msg_error "Cannot execute $EDITOR. Exiting" 3
+        fi
 
     awk '{print $1}' "$config_list" | grep -qw "$name" ||
         msg_error "Config for ${bold}$name${reset} not found in $config_list" 1
 
-    tempfile=$(mktemp /tmp/config-XXXX.tmp)
-    linenum=$(grep -n "$name" "$config_list" | cut -d: -f1)
-
     cleanup() { rm -f "$tempfile"; }
     trap cleanup EXIT INT QUIT
 
-    grep "$name" "$config_list" | tee "$tempfile" > /dev/null ||
+    tempfile=$(mktemp /tmp/config-XXX.tmp)
+    linenum=$(grep -wn "$name" "$config_list" | cut -d: -f1)
+
+    grep -w "$name" "$config_list" | tee "$tempfile" > /dev/null ||
         msg_error "Error ocurred." 2
 
     raw="$(head -1 "$tempfile")"
 
-    $EDITOR "$tempfile" ||
+    $EDITOR "$tempfile" 2> /dev/null ||
         msg_error "Error on $EDITOR. Aborting" 3
+
+    test $(grep '\S' "$tempfile" | wc -l) -ne 1 &&
+        msg_error "Invalid syntax. Must not contain multiple lines." 8
 
     test "$raw" == "$(head -1 "$tempfile")" &&
         msg_ok "No changes." && exit
@@ -147,10 +151,10 @@ config_rm() {
     test "$line" ||
         msg_error "Config for ${bold}$name${reset} not found in $config_list" 1
 
-    tempfile=$(mktemp /tmp/configs-XXXX.tmp)
-
     cleanup() { rm -f "$tempfile"; }
     trap cleanup EXIT INT QUIT
+
+    tempfile=$(mktemp /tmp/configs-XXX.tmp)
 
     tee "$tempfile" < "$config_list" > /dev/null ||
         msg_error "Unable to make temporary copy of $(basename $config_list)." 2
@@ -171,8 +175,8 @@ config_rm() {
 # List all stored configs
 #
 config_ls() {
-    echo -e "  ${bold}Stored Configs:${reset}"
-    grep '^[^\s#]\+' "$config_list" | \
+    echo -e "${bold}Stored Configs:${reset}"
+    grep -v '^#' "$config_list" | \
         sort | \
         column -s= -t | \
         awk '{print " ",$0}'
@@ -186,7 +190,7 @@ config_ls() {
 # Begin Script, argument parsing
 #
 test "$#" -eq 0 &&
-    short_usage
+    short_usage && exit
 
 case "$1" in
     add|rm|edit|ls)
@@ -208,26 +212,19 @@ test "$config_path" ||
     msg_error "${bold}$name${reset} doesn't exist in configs list." 1
 
 #
-# Keeping the file extension so $EDITOR would still apply its color scheme
-#
-config_file="${config_path##*/}"
-config_ext=".${config_file##*.}"
-if test ."$config_file" == "$config_ext" || test "$config_file" == "$config_ext"; then
-    config_tmp="$(mktemp /tmp/config-"$name"-XXXX.tmp)"
-else
-    config_tmp="$(mktemp /tmp/config-"$name"-XXXX.tmp"${config_ext}")"
-fi
-
-#
 # Trap EXIT QUIT INT signal to clean temporary file
 #
 cleanup() { rm -f "$config_tmp"; }
 trap cleanup EXIT QUIT INT
 
+config_file="${config_path##*/}"
+config_tmp="/tmp/edfig-${name}-$config_file"
+
 cp "$config_path" "$config_tmp" 2> /dev/null ||
     msg_error "Error creating temporary file. Aborting" 10
 
-$EDITOR "${config_tmp}"
+$EDITOR "${config_tmp}" 2> /dev/null ||
+    msg_error "Cannot execute $EDITOR. Exiting" 3
 
 diff "$config_tmp" "$config_path" &> /dev/null &&
     msg_ok "No changes." && exit
