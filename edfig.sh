@@ -4,7 +4,7 @@
 
 set -o nounset
 
-config_list="$HOME/.config/configs.list"
+config_list="$HOME/.config/edfig.list"
 CMD="${0##*/}"
 EDITOR="${EDITOR:-vi}"
 
@@ -57,7 +57,7 @@ msg_ok() { echo -e "  ${green}v$reset $1" >&2; }
 # Get config file path from the specified config name
 #
 config_getPath() {
-    sed -n "s/^$1 *= \([^ ]*.*\)/\1/p" "$config_list"
+    awk -F: "/${1}:/{print \$3}" "$config_list"
 }
 
 #
@@ -69,6 +69,7 @@ config_add() {
 
     local name="$1"
     local path="${2:-}"
+    local desc="${3:Config}"
 
     case "$name" in
         add|edit|rm|ls|help)
@@ -84,7 +85,7 @@ config_add() {
     test -f "$path" ||
         msg_error "Not found: $path" 9
 
-    echo -e "$name = $path" | tee -a "$config_list" > /dev/null ||
+    echo -e "$name:$desc:$path" | tee -a "$config_list" > /dev/null ||
         msg_error "Cannot add new config." 7
 
     msg_ok "New config has been added."
@@ -103,7 +104,7 @@ config_edit() {
             msg_error "Cannot execute $EDITOR. Exiting" 3
         fi
 
-    awk '{print $1}' "$config_list" | grep -qw "$name" ||
+    awk -F: '{print $1}' "$config_list" | grep -qw "$name" ||
         msg_error "Config for ${bold}$name${reset} not found in $config_list" 1
 
     cleanup() { rm -f "$tempfile"; }
@@ -146,7 +147,7 @@ config_rm() {
     test "$name" ||
         msg_error "What to remove?" 1
 
-    line=$(awk -v name="$name" '$1 == name' "$config_list")
+    line=$(awk -F: -v name="$name" '$1 == name' "$config_list")
 
     test "$line" ||
         msg_error "Config for ${bold}$name${reset} not found in $config_list" 1
@@ -176,10 +177,11 @@ config_rm() {
 #
 config_ls() {
     echo -e "${bold}Stored Configs:${reset}"
-    grep -v '^#' "$config_list" | \
-        sort | \
-        column -s= -t | \
-        awk '{print " ",$0}'
+    grep -v '^#' "$config_list" \
+        | sort \
+        | awk -F: '{print $1,$3,$2}' \
+        | column -t \
+        | awk '{print " "$1"\n  Path: "$2"\n  Desc: "$3}'
 
     exit
 }
