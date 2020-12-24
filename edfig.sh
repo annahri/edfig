@@ -69,7 +69,7 @@ config_add() {
 
     local name="$1"
     local path="${2:-}"
-    local desc="${3:Config}"
+    local desc="${3:-Config}"
 
     case "$name" in
         add|edit|rm|ls|help)
@@ -82,13 +82,15 @@ config_add() {
             ;;
     esac
 
+    path=$(readlink -f "$path")
+
     test -f "$path" ||
         msg_error "Not found: $path" 9
 
     echo -e "$name:$desc:$path" | tee -a "$config_list" > /dev/null ||
         msg_error "Cannot add new config." 7
 
-    msg_ok "New config has been added."
+    msg_ok "$name has been added to config list."
     exit
 }
 
@@ -132,7 +134,7 @@ config_edit() {
     sed "${linenum}s/.*/$line/" "$config_list" | sponge "$config_list" ||
         msg_error "Error editing entry." 4
 
-    msg_ok "Successfully edited."
+    msg_ok "Successfully edited $name."
     cleanup &&
         trap -- EXIT INT QUIT
 
@@ -164,7 +166,7 @@ config_rm() {
     grep -v "$line" "$tempfile" | tee "$config_list" > /dev/null ||
         msg_error "Unable to remove ${bold}$name${reset} from list" 4
 
-    msg_ok "Successfully removed."
+    msg_ok "Successfully removed $name from list."
 
     cleanup &&
         trap -- EXIT INT QUIT
@@ -181,7 +183,7 @@ config_ls() {
         | sort \
         | awk -F: '{print $1,$3,$2}' \
         | column -t \
-        | awk '{print " "$1"\n  Path: "$2"\n  Desc: "$3}'
+       # | awk '{print " "$1"\n  Path: "$2"\n  Desc: "$3}'
 
     exit
 }
