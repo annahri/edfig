@@ -45,9 +45,20 @@ reset='\033[0m'
 #=============================================================
 # Helper Functions
 #=============================================================
-msg_error() { echo -e "  ${red}x$reset $1" >&2 && exit "$2"; }
+msg_error() { echo -e "  ${red}x$reset $1" >&2 && exit "${2:-1}"; }
 msg_ok() { echo -e "  ${green}v$reset $1" >&2; }
+#=============================================================
 
+#=============================================================
+# Tests functions
+#=============================================================
+#
+# Check if 'name' exists
+#
+nameExists() {
+    local name="$1"
+    grep -qw "$name" <(cut -d: -f1 "$config_list")
+}
 #=============================================================
 
 #=============================================================
@@ -61,6 +72,44 @@ config_getPath() {
 }
 
 #
+# Checks the config file formatting
+# config_name:blank:config_path
+#
+config_check() {
+    OLDIFS=$IFS
+    IFS=$'\n'
+    local input=($1)
+    IFS=$OLDIFS
+    # 1. Name must not contain : character
+    # 2. A config line should respect the predefined format
+    # 3. Name and path filed cannot null
+    # 4. Specified path should exist
+    for line in "${input[@]}"; do
+        _separators=$(echo "$line" | grep -o ':' | wc -l)
+        _name=$(echo "$line" | cut -d: -f1)
+        _path=$(echo "$line" | cut -d: -f3)
+
+        if test $_separators -ne 2; then
+            msg_error "Formatting error: \"$line\"" 11
+        fi
+
+        if test -z "$_name" || test -z "$_path"; then
+            msg_error "Name or path cannot be empty." 10
+        fi
+
+        if grep -q ":" <<< "$_name" || grep -q ":" <<< "$_path"; then
+            msg_error "Name or path must not contain character :" 12
+        fi
+
+        if ! test -f "$_path"; then
+            msg_error "Error: \"$_path\" doesn't exist" 14
+        fi
+
+        unset _name _path
+    done
+}
+
+#
 # Add new config path to list
 #
 config_add() {
@@ -71,14 +120,29 @@ config_add() {
     local path="${2:-}"
     local desc="${3:-Config}"
 
+    # Config name tests
+    test $(echo "$name" | grep -c '$') -eq 1 ||
+        msg_error "Config name must not contain newlines." 9
+
+    nameExists "$name" &&
+        msg_error "Config name $name already exists." 1
+
     case "$name" in
         add|edit|rm|ls|help)
             msg_error "Reserved name. Please use another." 1
+            ;;
+        -*)
+            msg_error "Cannot use dash as the leading character. It might reserved." 1
+            ;;
+        *:*)
+            msg_error "Config name must not contain :" 1
             ;;
         *)
             if [[ "${name:0:1}" =~ ^.*([!?.,])+.*$ ]]; then
                 msg_error "Cannot use ${bold}${name:0:1}${reset} as the begining of name." 1
             fi
+
+            awk -F: /
             ;;
     esac
 
@@ -101,42 +165,66 @@ config_add() {
 config_edit() {
     local name="${1:-}"
 
-    test -z "$name" &&
-        if ! $EDITOR "$config_list" 2> /dev/null; then
-            msg_error "Cannot execute $EDITOR. Exiting" 3
-        fi
-
-    awk -F: '{print $1}' "$config_list" | grep -qw "$name" ||
-        msg_error "Config for ${bold}$name${reset} not found in $config_list" 1
-
     cleanup() { rm -f "$tempfile"; }
     trap cleanup EXIT INT QUIT
 
-    tempfile=$(mktemp /tmp/config-XXX.tmp)
-    linenum=$(grep -wn "$name" "$config_list" | cut -d: -f1)
+    tempfile=$(mktemp -t config-XXX.tmp)
 
-    grep -w "$name" "$config_list" | tee "$tempfile" > /dev/null ||
-        msg_error "Error ocurred." 2
+    # Get the line of the specified config. Otherwise, skip
+    if test -n "$name"; then
+        nameExists "$name" ||
+            msg_error "Config for ${bold}$name${reset} not found in $config_list" 1
 
-    raw="$(head -1 "$tempfile")"
+        grep -w "$name" "$config_list" | tee "$tempfile" > /dev/null ||
+            msg_error "Error ocurred." 2
 
-    $EDITOR "$tempfile" 2> /dev/null ||
-        msg_error "Error on $EDITOR. Aborting" 3
+        linenum=$(grep -wn "$name" "$config_list" | cut -d: -f1)
+    else
+        cp "$config_list" "$tempfile" 2> /dev/null ||
+            msg_error "Cannot create temporary file." 2
+    fi
 
-    test $(grep '\S' "$tempfile" | wc -l) -ne 1 &&
-        msg_error "Invalid syntax. Must not contain multiple lines." 8
+    # Unedited tempfile get stored in raw.
+    raw="$(cat "$tempfile" | grep -v '^$')"
 
-    test "$raw" == "$(head -1 "$tempfile")" &&
+    if $EDITOR "$tempfile" 2> /dev/null; then
+        grep -v '^$' "$tempfile" | sort | sponge "$tempfile"
+    else
+        msg_error "Unexpected error on $EDITOR. Aborting" 3
+    fi
+
+    diff <(echo "$raw") <(cat "$tempfile") > /dev/null 2>&1 &&
         msg_ok "No changes." && exit
 
-    line="$(sed 's/"/\\"/g;s/\//\\\//g' "$tempfile")"
+    if test -z "$name"; then
+        # New/modified lines `comm -13 $config_list $tempfile`
+        # Deleted lines `comm -23 $config_list $tempfile`
+        modified_lines=$(comm -13 "$config_list" "$tempfile" 2> /dev/null | sed 's/"/\\"/g;s/\//\\\//g')
+        deleted=$(comm -23 "$config_list" "$tempfile" 2> /dev/null | cut -d: -f1 | xargs)
 
-    sed "${linenum}s/.*/$line/" "$config_list" | sponge "$config_list" ||
-        msg_error "Error editing entry." 4
+        config_check "$modified_lines"
 
-    msg_ok "Successfully edited $name."
-    cleanup &&
-        trap -- EXIT INT QUIT
+        mv "$tempfile" "$config_list" 2> /dev/null ||
+            msg_error "Error applying changes." 4
+
+        name=$(echo "$modified_lines" | cut -d: -f1 | xargs)
+    else
+        if test $(grep -c '\S' "$tempfile") -gt 1; then
+            msg_error "Invalid syntax. Must not contain multiple lines." 8
+        fi
+
+        line="$(sed 's/"/\\"/g;s/\//\\\//g' "$tempfile")"
+        config_check "$line"
+
+        sed "${linenum}s/.*/$line/" "$config_list" | sponge "$config_list" ||
+            msg_error "Error editing entry." 4
+    fi
+
+
+    msg_ok "Successfully edited ${bold}$name${reset}."
+
+    test -n "${deleted:-}" &&
+        msg_ok "Successfully deleted: ${bold}$deleted${reset}"
 
     exit
 }
@@ -157,7 +245,7 @@ config_rm() {
     cleanup() { rm -f "$tempfile"; }
     trap cleanup EXIT INT QUIT
 
-    tempfile=$(mktemp /tmp/configs-XXX.tmp)
+    tempfile=$(mktemp -t configs-XXX.tmp)
 
     tee "$tempfile" < "$config_list" > /dev/null ||
         msg_error "Unable to make temporary copy of $(basename $config_list)." 2
@@ -181,7 +269,7 @@ config_ls() {
     echo -e "${bold}Stored Configs:${reset}"
     grep -v '^#' "$config_list" \
         | sort \
-        | awk -F: '{print $1,$3,$2}' \
+        | awk -F: '{print $1,$3}' \
         | column -t \
        # | awk '{print " "$1"\n  Path: "$2"\n  Desc: "$3}'
 
@@ -222,7 +310,7 @@ cleanup() { rm -f "$config_tmp"; }
 trap cleanup EXIT QUIT INT
 
 config_file="${config_path##*/}"
-config_tmp="/tmp/edfig-${name}-$config_file"
+config_tmp="${TMPDIR:-/tmp}/edfig-${name}-$config_file"
 
 cp "$config_path" "$config_tmp" 2> /dev/null ||
     msg_error "Error creating temporary file. Aborting" 10
