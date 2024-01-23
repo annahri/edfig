@@ -1,7 +1,5 @@
 # Edfig - Edit Config
 
-## Description
-
 A simple utility to manage and quickly access frequently edited config files. Assign easy aliases to your configs for swift access.
 
 ## Usage
@@ -28,7 +26,8 @@ edfig -l
 ## Installation
 
 ```sh
-tobe added
+curl -sLo ~/.local/bin/edfig https://raw.githubusercontent.com/annahri/edfig/main/edfig.sh
+chmod +x ~/.local/bin/edfig
 ```
 
 ## Requirements
