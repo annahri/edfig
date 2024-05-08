@@ -28,6 +28,8 @@ curl -sLo ~/.local/bin/edfig https://raw.githubusercontent.com/annahri/edfig/mai
 chmod +x ~/.local/bin/edfig
 ```
 
+Or change `~/.local/bin` to your preferred `PATH`.
+
 ## Requirements
 
 - Bash
