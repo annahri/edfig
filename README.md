@@ -6,27 +6,25 @@ A simple utility to manage and quickly access frequently edited config files. As
 
 ```
 # Add config file or directory
-edfig -a /path/to/config [alias]
+edfig a|ad|add /path/to/config [alias]
 
 # Access the config file using alias
-edfig -e <alias>
-# or
 edfig <alias>
 
 # Remove config file
-edfig -d <alias>
+edfig del|rm <alias>
 
 # Rename a config alias
-edfig -r <alias> <new alias>
+edfig re|ren|rename <alias> <new alias>
 
 # List config aliases
-edfig -l
+edfig l|ls|list
 ```
 
 ## Installation
 
 ```sh
-curl -sLo ~/.local/bin/edfig https://raw.githubusercontent.com/annahri/edfig/main/edfig.sh
+curl -sLo ~/.local/bin/edfig https://raw.githubusercontent.com/annahri/edfig/main/edfig
 chmod +x ~/.local/bin/edfig
 ```
 
