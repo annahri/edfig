@@ -10,15 +10,16 @@ cmd="${cmd%.sh}"
 edfig_dir="${HOME}/.config/edfig"
 edfig_configs_dir="${edfig_dir}/configs"
 edfig_editor="${EDITOR:-vi}"
+edfig_commands="a|ad|add|l|ls|list|rm|del|re|ren|rename"
 
 # Color codes
-RESET='\033[0m'       # Reset all formatting
-BOLD='\033[1m'        # Bold text
+RESET=$(tput sgr0)       # Reset all formatting
+BOLD=$(tput bold) # Bold text
 
-RED='\033[31m'        # Red text
-GREEN='\033[32m'      # Green text
-YELLOW='\033[33m'     # Yellow text
-BLUE='\033[34m'       # Blue text
+RED=$(tput setaf 1) # Red text
+GREEN=$(tput setaf 2) # Green text
+YELLOW=$(tput setaf 3) # Yellow text
+BLUE=$(tput setaf 4) # Blue text
 
 msg() { printf '%s\n' "$@"; }
 color_msg() {
@@ -30,33 +31,49 @@ good() { color_msg  green "$*" >&2; }
 warn() { color_msg yellow "$*" >&2; }
 
 usage() {
-    msg "${cmd} -- Access your frequently edited config files using alias" \
+    msg "${BOLD}${cmd}${RESET} -- Access your frequently edited config files using alias" \
         " " \
-        "USAGE:" \
-        " ${cmd} -a <path> [alias]" \
-        " ${cmd} -e|-d <name>" \
-        " ${cmd} -r <alias> <new alias>" \
-        " ${cmd} <alias>" \
-        " ${cmd} -l" \
+        "${BOLD}USAGE:${RESET}" \
+        "  ${BOLD}${cmd} add <path> [alias]${RESET}" \
+        "  ${BOLD}${cmd} del <name>${RESET}" \
+        "  ${BOLD}${cmd} rename <alias> <new alias>${RESET}" \
+        "  ${BOLD}${cmd} ls${RESET}" \
+        "  ${BOLD}${cmd} <alias>${RESET}" \
         " " \
-        "OPTIONS:" \
-        " -a <path> [alias]  Adds a config file to edfig list as alias (if given)"\
-        "                    otherwise the basename of the config" \
-        " -e <alias>         Edits the config file using EDITOR" \
-        " -d <alias>         Removes the config file from list" \
-        " -r <alias> <new>   Renames a config alias" \
-        " -l                 Prints config list" \
+        "${BOLD}SUBCOMMANDS:${RESET}" \
+        "  ${BOLD}a|ad|add <path> [alias]${RESET}" \
+        "    Adds a config file to edfig list as alias (if given) otherwise the basename of the config" \
+        "  ${BOLD}del|rm <alias>${RESET}" \
+        "    Removes the config file from list" \
+        "  ${BOLD}re|ren|rename <alias> <new>${RESET}" \
+        "    Renames a config alias" \
+        "  ${BOLD}l|ls|list${RESET}" \
+        "    Prints config list" \
+        "  ${BOLD}help${RESET}" \
+        "    Display this help" \
         " " \
-        "EXTRA:" \
-        " If EDFIG_GWD environment variable is set, ${cmd} will change the CWD to the" \
-        " original config's working directory." >&2
+        "${BOLD}EXTRA:${RESET}" \
+        "  If ${BOLD}EDFIG_GWD${RESET} environment variable is set, ${cmd} will change the CWD to the" \
+        "  original config's working directory." >&2
     exit
+}
+
+check_alias() {
+    echo "${1}" | grep -qE "^($edfig_commands)$" || return
+
+    err "Alias cannot use reserved keywords: $edfig_commands"
+    exit 1
 }
 
 config_add() {
     local source="$1"
     local alias="$2"
     local type="file"
+
+    if [[ "$#" -eq 0 ]]; then 
+        err "Subcommand \`add\` requires a file path: $cmd add <path> [alias]"
+        exit 1
+    fi
 
     local re='^[][*_-]'
     if echo -e "${source}\n${alias}" | grep -qE "$re"; then
@@ -73,6 +90,8 @@ config_add() {
         alias="$(basename "$source")"
     fi
 
+    check_alias "$alias"
+
     if [[ -d "$source" ]]; then
         warn "The source is a directory. Some text editor doesn't support opening a directory."
         type="directory"
@@ -85,8 +104,10 @@ config_add() {
         exit 1
     fi
 
+    source=$(readlink -f "$source")
+
     ln -s "$source" "$fullpath"
-    good "Config $type has been added"
+    good "$alias ($type) has been added"
 }
 
 config_delete() {
@@ -148,7 +169,16 @@ config_rename() {
         exit 1
     fi
 
-    if { pushd "$edfig_configs_dir" &> /dev/null || :d
+    alias_realpath="${edfig_configs_dir}/${alias}"
+
+    if [[ ! -e "$alias_realpath" ]]; then
+        err "Alias $alias doesn't exist"
+        exit 1
+    fi
+
+    check_alias "$new_alias"
+
+    if { pushd "$edfig_configs_dir" &> /dev/null || :
          mv "$alias" "$new_alias"
          popd &> /dev/null || :; } then
         good "$alias has been renamed to $new_alias"
@@ -165,20 +195,22 @@ config_list() {
         realpath=$(readlink -f "$config")
         filetype=$(get_filetype "$realpath")
 
-        printf '%d %b%s%b %b%s%b %b%s%b\n' \
-            "$((++i))" \
-            "$GREEN" "$basename" "$RESET" \
-            "$YELLOW" "$filetype" "$RESET" \
-            "$BLUE" "$realpath" "$RESET"
-    done < <(find "$edfig_configs_dir" -type l | sort) \
-        | column -N "NO,NAME,TYPE,PATH" -t -H "TYPE"
+        color=BLUE 
+        if [[ $filetype == "d" ]]; then 
+            color=YELLOW
+            realpath="${realpath} (dir)"
+        fi
 
-    unset i
+        printf '%b%s%b\t%b%s%b\n' \
+            "$GREEN" "$basename" "$RESET" \
+            "${!color}" "$realpath" "$RESET"
+    done < <(find "$edfig_configs_dir" -type l | sort) \
+        | column -N "Alias,Source" -t -s $'\t'
 }
 
 set_opt() {
     if [[ "$action" ]]; then
-        err "Can only use 1 option: -${action::1}"
+        err "Can only use 1 option: ${action}"
         exit 1
     fi
 
@@ -206,13 +238,12 @@ main() {
     fi
 
     while [[ $# -ne 0 ]]; do case "$1" in
-        -h) usage            ;;
-        -a) set_opt "add"    ;;
-        -e) set_opt "edit"   ;;
-        -d) set_opt "delete" ;;
-        -r) set_opt "rename" ;;
-        -l) set_opt "list"   ;;
-         *) params+=("$1")   ;;
+        a|ad|add)      set_opt "add"    ;;
+        del|rm)        set_opt "delete" ;;
+        re|ren|rename) set_opt "rename" ;;
+        l|ls|list)     set_opt "list"   ;;
+        help)   usage            ;;
+        *)      params+=("$1")   ;;
     esac; shift; done
 
     if [[ -z "${action}" ]]; then
@@ -223,7 +254,7 @@ main() {
             exit
         fi
 
-        err "Invalid option or Config not found: ${params[*]}"
+        err "Invalid subcommand/Config not found: ${params[*]}"
         exit 1
     fi
 
