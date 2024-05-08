@@ -7,9 +7,19 @@ function __edfig_entries
     end
 end
 
-complete -c edfig -f -a "(__edfig_entries edit)" -d "Edits a config using EDITOR"
-complete -c edfig -o r -f -a "(__edfig_entries rename)" -d "Renames a config file"
-complete -c edfig -o e -f -a "(__edfig_entries edit)" -d "Edits a config using EDITOR"
-complete -c edfig -o a -r -d "Adds a config file to edfig list"
-complete -c edfig -o l -f -d "Show edfig list"
-complete -c edfig -o h -f -d "Display usage"
+function __edfig_entries
+    find ~/.config/edfig/configs -type l -exec basename {} \;
+end
+
+set -l edfig_subcommands a ad add del rm re ren rename l ls list help
+
+complete -f -c edfig -n "not __fish_seen_subcommand_from (__edfig_entries); and not __fish_seen_subcommand_from $edfig_subcommands" -a "(__edfig_entries) $edfig_subcommands"
+
+complete    -c edfig -n "not __fish_seen_subcommand_from $edfig_subcommands" -a "a ad add" -d "Add a config file to list as an alias"
+complete -f -c edfig -n "not __fish_seen_subcommand_from $edfig_subcommands" -a "re ren rename" -d "Rename an alias"
+complete -f -c edfig -n "not __fish_seen_subcommand_from $edfig_subcommands" -a "del rm" -d "Remove an alias"
+complete -f -c edfig -n "not __fish_seen_subcommand_from $edfig_subcommands" -a "l ls list" -d "List aliases"
+complete -f -c edfig -n "not __fish_seen_subcommand_from $edfig_subcommands" -a "help" -d "Show help"
+
+set -l edfig_subcommands_aliasonly re ren rename del rm
+complete -f -c edfig -n "__fish_seen_subcommand_from $edfig_subcommands_aliasonly; and not __fish_seen_subcommand_from (__edfig_entries)" -a "(__edfig_entries)"
